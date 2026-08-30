@@ -38,6 +38,8 @@ function CalendarView() {
     const debut = new Date(dateActuelle.getFullYear(), dateActuelle.getMonth() - 1, 1);
     const fin = new Date(dateActuelle.getFullYear(), dateActuelle.getMonth() + 2, 0);
     chargerEvenements(debut, fin);
+    const interval = setInterval(() => chargerEvenements(debut, fin), 8000);
+    return () => clearInterval(interval);
   }, [chargerEvenements, dateActuelle]);
 
   function styleEvenement(evenement) {

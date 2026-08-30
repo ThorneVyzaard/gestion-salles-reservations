@@ -11,7 +11,12 @@ function SalleForm() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    api.get('/equipements').then((res) => setEquipementsDisponibles(res.data));
+    function chargerEquipements() {
+      api.get('/equipements').then((res) => setEquipementsDisponibles(res.data));
+    }
+    chargerEquipements();
+    const interval = setInterval(chargerEquipements, 8000);
+    return () => clearInterval(interval);
   }, []);
 
   function toggleEquipement(id) {

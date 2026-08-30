@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { sequelize, Salle, Reservation, Notification } = require('../models');
+const { sequelize, Salle, Reservation, Notification, Utilisateur } = require('../models');
 const { transitionAutorisee } = require('../utils/reservationTransitions');
 
 async function creerNotification(utilisateur_id, type, message, options = {}) {
@@ -39,65 +39,6 @@ async function createReservation(req, res) {
 
     await t.commit();
     res.status(201).json(reservation);
-  } catch (err) {
-    await t.rollback();
-    res.status(500).json({ message: err.message });
-  }
-}
-
-async function modifierReservation(req, res) {
-  const { date_debut, date_fin } = req.body;
-  if (!date_debut || !date_fin) return res.status(400).json({ message: 'date_debut et date_fin sont requis' });
-  const debut = new Date(date_debut);
-  const fin = new Date(date_fin);
-  if (isNaN(debut) || isNaN(fin)) return res.status(400).json({ message: 'Dates invalides' });
-  if (fin <= debut) return res.status(400).json({ message: 'date_fin doit être postérieure à date_debut' });
-  if (debut < new Date()) return res.status(400).json({ message: 'Impossible de déplacer vers un créneau dans le passé' });
-
-  const t = await sequelize.transaction();
-  try {
-    const reservation = await Reservation.findByPk(req.params.id, { transaction: t });
-    if (!reservation) { await t.rollback(); return res.status(404).json({ message: 'Réservation introuvable' }); }
-
-    const estAuteur = reservation.utilisateur_id === req.user.id;
-    const estGestionnaire = ['gestionnaire', 'admin'].includes(req.user.role);
-    if (!estAuteur && !estGestionnaire) {
-      await t.rollback();
-      return res.status(403).json({ message: 'Vous ne pouvez modifier que vos propres réservations' });
-    }
-    if (reservation.statut === 'annulee') {
-      await t.rollback();
-      return res.status(409).json({ message: 'Impossible de modifier une réservation annulée' });
-    }
-
-    await Salle.findByPk(reservation.salle_id, { transaction: t, lock: t.LOCK.UPDATE });
-
-    const conflit = await Reservation.findOne({
-      where: {
-        salle_id: reservation.salle_id,
-        id: { [Op.ne]: reservation.id },
-        statut: { [Op.ne]: 'annulee' },
-        date_debut: { [Op.lt]: fin },
-        date_fin: { [Op.gt]: debut },
-      },
-      transaction: t,
-    });
-    if (conflit) { await t.rollback(); return res.status(409).json({ message: 'Ce créneau est déjà réservé pour cette salle' }); }
-
-    reservation.date_debut = debut;
-    reservation.date_fin = fin;
-    reservation.statut = 'en_attente';
-    await reservation.save({ transaction: t });
-
-    await creerNotification(
-      reservation.utilisateur_id,
-      'modification',
-      `Votre réservation #${reservation.id} a été déplacée et repasse en attente de confirmation.`,
-      { transaction: t }
-    );
-
-    await t.commit();
-    res.json(reservation);
   } catch (err) {
     await t.rollback();
     res.status(500).json({ message: err.message });
@@ -145,6 +86,28 @@ async function annulerReservation(req, res) {
   }
 }
 
+async function supprimerReservation(req, res) {
+  try {
+    const reservation = await Reservation.findByPk(req.params.id);
+    if (!reservation) return res.status(404).json({ message: 'Réservation introuvable' });
+
+    const estAuteur = reservation.utilisateur_id === req.user.id;
+    const estGestionnaire = ['gestionnaire', 'admin'].includes(req.user.role);
+    if (!estAuteur && !estGestionnaire) {
+      return res.status(403).json({ message: 'Vous ne pouvez supprimer que vos propres réservations' });
+    }
+
+    if (reservation.statut !== 'annulee') {
+      return res.status(409).json({ message: 'Seule une réservation annulée peut être supprimée' });
+    }
+
+    await reservation.destroy();
+    res.status(204).send();
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
 async function mesReservations(req, res) {
   const { statut, date } = req.query;
   const where = { utilisateur_id: req.user.id };
@@ -164,6 +127,18 @@ async function reservationsParSalle(req, res) {
   const where = { salle_id: req.params.salleId };
   if (statut) where.statut = statut;
   const reservations = await Reservation.findAll({ where, order: [['date_debut', 'DESC']] });
+  res.json(reservations);
+}
+
+async function toutesReservations(req, res) {
+  const { statut } = req.query;
+  const where = {};
+  if (statut) where.statut = statut;
+  const reservations = await Reservation.findAll({
+    where,
+    include: [Salle, { model: Utilisateur, attributes: ['id', 'nom', 'email'] }],
+    order: [['date_debut', 'ASC']],
+  });
   res.json(reservations);
 }
 
@@ -193,6 +168,6 @@ async function calendrier(req, res) {
 }
 
 module.exports = {
-  createReservation, modifierReservation, confirmerReservation, annulerReservation,
-  mesReservations, reservationsParSalle, calendrier,
+  createReservation, confirmerReservation, annulerReservation, supprimerReservation,
+  mesReservations, reservationsParSalle, toutesReservations, calendrier,
 };

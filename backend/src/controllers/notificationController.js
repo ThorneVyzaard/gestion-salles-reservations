@@ -19,4 +19,19 @@ async function marquerLue(req, res) {
   res.json(notification);
 }
 
-module.exports = { mesNotifications, marquerLue };
+async function supprimerNotification(req, res) {
+  const notification = await Notification.findByPk(req.params.id);
+  if (!notification) return res.status(404).json({ message: 'Notification introuvable' });
+  if (notification.utilisateur_id !== req.user.id) {
+    return res.status(403).json({ message: 'Accès refusé' });
+  }
+  await notification.destroy();
+  res.status(204).send();
+}
+
+async function supprimerToutesNotifications(req, res) {
+  await Notification.destroy({ where: { utilisateur_id: req.user.id } });
+  res.status(204).send();
+}
+
+module.exports = { mesNotifications, marquerLue, supprimerNotification, supprimerToutesNotifications };
