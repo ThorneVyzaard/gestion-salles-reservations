@@ -13,8 +13,8 @@ Application web permettant de consulter la disponibilité des salles et de gére
 ```
 gestion-salles-reservations/
 ├── backend/        # API Express (routes, contrôleurs, modèles Sequelize)
-├── frontend/       # Application React (Vite)
 └── uploads/        # Photos des salles (généré automatiquement au démarrage du backend)
+├── frontend/       # Application React (Vite)
 ```
 
 ## Prérequis
